@@ -1,0 +1,1232 @@
+---
+title: "IXIS Data Science Challenge"
+author: "Patrick Hearin"
+date: '2022-08-28'
+output: pdf_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Initial Setup
+
+
+Load the libraries that will be used in this assignment.
+
+```{r cars}
+
+library(readr)            # Read csv files.
+library(dplyr)            # Manipulate data.
+library(xlsx)             # Work with Excel spreadsheets.
+library(lubridate)        # Work with dates.
+library(ggplot2)          # Create visualizations.
+library(gganimate)        # Animate visualizations.
+library(gifski)           # Render animations at different frame rates.
+library(png)              # Help with rendering.
+library(gridExtra)
+library(stringr)
+```
+
+
+
+Read in the data.
+
+```{r}
+
+adds_to_cart <- read_csv("DataAnalyst_Ecom_data_addsToCart.csv")       # Load the adds to cart csv.
+session_counts <- read_csv("DataAnalyst_Ecom_data_sessionCounts.csv")  # Load the sessions csv.
+
+```
+
+View the full data set in a seperate tab.
+
+```{r}
+
+View(adds_to_cart)    # Keep a reference to the adds to cart and sessions data.
+View(session_counts)
+
+```
+
+
+
+Look at the structure of the data and the types.
+
+
+```{r}
+
+str(session_counts) # Look at the types of variables.
+
+```
+
+
+View the first few columns of a data set.
+
+```{r}
+
+head(session_counts)  # Look at the first couple rows to get to know the data.
+
+```
+
+
+# Data Cleaning and Wrangling.
+
+Caculate is the data set 
+
+```{r}
+
+any(is.na(session_counts)) # Check the data for missing values.
+
+```
+
+Next check if there is any duplicate data points.
+
+```{r}
+
+any(duplicated(session_counts)) # Check the data for duplicates.
+
+```
+
+Next the outliers are calculated. First the boxplot is visualized for the transactions feature. This often yields far to many outliers so another method is applied.
+
+
+```{r}
+
+
+outlier_box_plot <- boxplot(session_counts$transactions) # Graph the boxplot for the transaction feature.
+
+
+```
+The previous plot has to many outliers. These are printed out using the following script.
+
+```{r}
+
+
+boxplot.stats(session_counts$transactions)$out  # Print all the outliers from the boxplot.
+
+
+```
+
+Since there is far to many outliers from the boxplot calculation quantiles will be used. Setting a small value for the quantile yields the worst outliers in the data.
+
+```{r}
+lower_bound <-  quantile(session_counts$transactions, 0.001)  # Set the lower bound for the data.
+
+upper_bound <- quantile(session_counts$transactions, 0.999) # Set the upper bound for the data.
+
+# Calculate the rows that are outside the bounds.
+
+outlier <- which(session_counts$transactions < lower_bound | session_counts$transactions > upper_bound)
+
+# Print out the rows.
+
+outlier
+
+
+
+```
+
+```{r}
+
+# Remove these rows from the data set.
+
+session_counts_clean <- session_counts[-outlier, ]
+
+
+```
+
+```{r}
+
+print(dim(session_counts)) # Print out the original data length.
+
+print(dim(session_counts_clean)) # Print out length of the data without outliers.
+
+```
+
+
+The calculation is executed for the sessions feature.
+
+```{r}
+lower_bound1 <-  quantile(session_counts_clean$sessions, 0.001) # Set the lower bound for the data.
+
+upper_bound1 <- quantile(session_counts_clean$sessions, 0.999) # Set the upper bound for the data.
+
+# Calculate the rows that are outliers.
+
+outlier1 <- which(session_counts_clean$sessions < lower_bound1 | session_counts_clean$sessions > upper_bound1)
+
+#print out the rows.
+
+outlier1
+
+
+
+```
+
+```{r}
+
+# Remove the outlier rows from the data.
+
+session_counts_clean1 <- session_counts_clean[-outlier1, ]
+
+
+```
+
+
+
+```{r}
+# Compare the lengths to make sure the data was removed.
+
+print(dim(session_counts_clean))
+
+print(dim(session_counts_clean1))
+
+```
+
+
+Finally, the calculation is done for the quantity feature.
+
+```{r}
+
+lower_bound2 <-  quantile(session_counts_clean1$QTY, 0.001) # Set the lower bound for the data.
+
+upper_bound2 <- quantile(session_counts_clean1$QTY, 0.999) # Set the upper bound for the data.
+
+# Calculate the rows that are outliers.
+
+outlier2 <- which(session_counts_clean1$QTY < lower_bound2 | session_counts_clean1$QTY > upper_bound2)
+
+# Print the rows.
+
+outlier2
+
+```
+
+Next remove the outliers from the data and define the final clean data.
+
+```{r}
+
+# Remore outliers for the final clean data set.
+
+session_counts_clean_final <- session_counts_clean1[-outlier2, ]
+
+
+```
+
+
+
+Compare the length of the final data set.
+```{r}
+
+print(dim(session_counts_clean1))
+
+print(dim(session_counts_clean_final))
+
+```
+
+
+
+
+Use the strsplit function to split the data at the forward slash. Then add those columns to the data set.
+
+```{r}
+
+date_split <-  strsplit(session_counts_clean_final$dim_date, "/") # Split the data on the forward slash.
+
+date_matrix <- matrix(unlist(date_split),ncol = 3,byrow=T) # Create a matrix from the split data.
+
+date_df <- data.frame(date_matrix) # Make a data frame from the matrix.
+
+
+# Add the data to the original matrix.
+
+
+session_counts_clean_final$Month <-  date_df$X1
+
+session_counts_clean_final$Day <-  date_df$X2
+
+session_counts_clean_final$Year <-  date_df$X3
+ 
+
+```
+
+Calculate the ECR and add it to the dataframe.
+
+```{r}
+
+session_counts_clean_final$ECR <- session_counts_clean_final$transactions/session_counts_clean_final$sessions # Calculate the ECR.
+
+```
+
+
+Ca
+
+
+Make the dim_data column into data type.
+
+```{r}
+# Use the mdy function to covert the dim_date feature to the date type.
+
+session_counts_clean_final$dim_date <- mdy(session_counts_clean_final$dim_date)
+
+```
+
+
+# Calculations
+
+The first deliverable, the month device, deliverable will be calculated.
+
+Get rid of all the data that isn't going to be aggregated.
+
+```{r}
+
+df1 <-session_counts_clean_final[c(2,4:7,10)] # Use the subset of the columns in the vector.
+
+```
+
+View the first couple rows of the data to make sure that it is acceptable.
+
+```{r}
+
+# Display the data.
+
+head(df1)
+
+```
+
+
+
+
+
+Calculate the sum aggregation grouping by month and device type.
+
+```{r}
+
+# Calculate the aggregation by grouping the month and device category variables.
+
+df_month_device <- df1 %>%
+  group_by(Month, dim_deviceCategory) %>%
+  summarise_all(list(sum), na.rm=TRUE)
+
+# Order by the month.
+
+df_month_device[order(df_month_device$Month),]
+
+```
+
+The data frame df_month_device is the first deliverable asked to be calculated.
+
+Next the second deliverable will be calculated.
+
+Find the maximum data in the data.
+
+```{r}
+
+# Use the date type to calculate the last date.
+
+max(session_counts_clean_final$dim_date)
+
+```
+
+Since the maximum year is 2013 and the maximum month is June use a Boolean to calculate the data that is from the last month and the one previous.
+
+```{r}
+
+# Make a subset with the last month and the one before it using a Boolean.
+
+df_last_month <-session_counts_clean_final[(session_counts_clean_final$Month == "6" & session_counts_clean_final$Year == "13") | (session_counts_clean_final$Month == "5" & session_counts_clean_final$Year == "13"), ]
+
+```
+
+
+
+Take the data needed to compute the final table.
+
+```{r}
+
+# Use a vector to compute the subset needed.
+
+df_last_month_final <-  df_last_month[c(4:7,10)]
+
+```
+
+Compute the sum of all the data grouping by month.
+
+```{r}
+# Aggregate all the data during those months.
+
+df_comparison <- df_last_month_final %>%
+  group_by(Month) %>%
+  summarise_all(list(sum), na.rm=TRUE)
+
+# Order by the month.
+
+df_comparison[order(df_comparison$Month),]
+
+```
+
+
+Use the same Boolean to extract them months needed from the adds to cart data frame.
+
+```{r}
+
+# Use the same boolean to calculate the months required from the adds_to_cart data set.
+
+df_cart <- adds_to_cart[(adds_to_cart$dim_month == "6" & adds_to_cart$dim_year == "2013") | (adds_to_cart$dim_month == "5" & adds_to_cart$dim_year == "2013"),]
+
+
+```
+
+Rename the dim_month column.
+
+```{r}
+
+# Change the column name.
+
+df_cart$Month <-df_cart$dim_month
+
+
+```
+
+Take only the data needed.
+
+```{r}
+# Use a vector to take a subset of the data.
+
+df_cart_final <- df_cart[c(3,4)]
+
+```
+
+Put the add to cart column in the comparison data frame.
+
+```{r}
+
+# Add the final column to the data set.
+
+df_comparison$addsToCart <- df_cart_final$addsToCart
+
+```
+
+Check the final data frame.
+
+```{r}
+
+
+head(df_comparison)
+
+```
+
+The df_comparison data_frame is the final result for the second deliverable.
+
+Now the two calculation will be exported to a single Excel file with two worksheets.
+
+
+```{r}
+
+# Convert the Tibble to a data_frame.
+
+df_month_device_final <- data.frame(df_month_device)
+
+```
+
+
+Use the xlsx2 function from the xlsx package to write the excel spreadsheet.
+
+```{r}
+
+# Write to the Excel file the two worksheets.
+
+write.xlsx2(df_month_device_final, file = "client_deliverable.xlsx", sheetName = "Month_Device_Aggregation")
+
+write.xlsx2(df_comparison, file = "client_deliverable.xlsx", sheetName = "Month_Comparison", append = TRUE)
+
+
+```
+
+
+# EDA
+
+In this section I dive into some EDA to try to find a proper story from the data. I could have created other files but I will end the analysis at what was requested and proceed to present my data visualization skills with R.
+
+
+The following plots are from the comparison of the consecutive months data frame. Below is a comparison of the sessions.
+
+First replace the numbers with the month name.
+
+
+```{r}
+
+# Replace the numberic month with the name.
+
+df_comparison['Month'][df_comparison['Month'] == 5] <- "May"
+
+
+df_comparison['Month'][df_comparison['Month'] == 6] <- "June"
+
+```
+
+Next define the theme for the visualizations.
+
+```{r}
+
+myTheme <- theme(
+  plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+  legend.title = element_text(colour = "steelblue", face = "bold.italic", family = "Helvetica"),
+  legend.text = element_text(face = "italic", colour = "steelblue4", family = "Helvetica"),
+  axis.title = element_text(family = "Helvetica", size = (10), colour = "steelblue4"),
+  axis.text = element_text(family = "Courier", colour = "cornflowerblue", size = (10))
+)
+
+
+```
+
+```{r}
+
+# Plot the graph reorder such that the months are sequential.
+# Fill based on the month to have two different colors.
+
+fig_comparision <- ggplot(df_comparison, aes(x=reorder(Month, sessions), y=sessions, fill = Month)
+               )+geom_col(show.legend = TRUE, alpha=1, colour = "black")+ scale_colour_viridis_b() +
+                scale_fill_manual(values = c("#902147", "#004159")) +
+                xlab("Months May and June")+
+                ylab("Sessions")+
+                ggtitle("Sessions Monthly Comparision")+ guides(fill = FALSE)
+
+
+print(fig_comparision+myTheme)
+
+
+```
+
+
+The next consecutive month comparison is over the transactions.
+
+```{r}
+
+# Plot the graph reorder such that the months are sequential.
+# Fill based on the month to have two different colors.
+
+fig_comparision2 <- ggplot(df_comparison, aes(x=reorder(Month, transactions), y=transactions, fill = Month)
+               )+geom_col(show.legend = TRUE, alpha=1, colour = "black")+ scale_colour_viridis_b() +
+                scale_fill_manual(values = c("#FAC200", "#6A7D8E")) +
+                xlab("Months May and June")+
+                ylab("Transactions")+
+                ggtitle("Transactions Comparision")+ guides(fill = FALSE)
+
+
+print(fig_comparision2+myTheme)
+
+
+```
+
+
+The next consecutive month comparison is over the quantity.
+
+
+```{r}
+
+# Plot the graph reorder such that the months are sequential.
+# Fill based on the month to have two different colors.
+
+fig_comparision3 <- ggplot(df_comparison, aes(x=reorder(Month, QTY), y=QTY, fill = Month)
+               )+geom_col(show.legend = TRUE, alpha=1, colour = "black")+ scale_colour_viridis_b()+
+                scale_fill_manual(values = c("#FAC200", "#6A7D8E")) +
+                xlab("Months May and June")+
+                ylab("Quantity")+
+                ggtitle("Quantity Comparision")+ guides(fill = FALSE)
+
+print(fig_comparision3+myTheme)
+
+
+```
+
+
+The next consecutive month comparison is over ECR.
+
+```{r}
+
+# Plot the graph reorder such that the months are sequential.
+# Fill based on the month to have two different colors.
+
+fig_comparision4 <- ggplot(df_comparison, aes(x=reorder(Month,-ECR), y=ECR, fill = Month)
+               )+geom_col(show.legend = TRUE, alpha=1, colour = "black")+ scale_colour_viridis_b()+
+                scale_fill_manual(values = c("#6A7D8E", "#73EBAE")) +
+                xlab("Months May and June")+
+                ylab("ECR")+ 
+                ggtitle("ECR Comparision")+ guides(fill = FALSE)
+
+
+print(fig_comparision4+myTheme)
+
+
+```
+
+Finally the consecutive month comparison is over the addsToCart feature.
+
+```{r}
+
+# Plot the graph reorder such that the months are sequential.
+# Fill based on the month to have two different colors.
+
+fig_comparision5 <- ggplot(df_comparison, aes(x=reorder(Month,-addsToCart), y=addsToCart, fill = Month)
+               )+geom_col(show.legend = TRUE, alpha=1, colour = "black")+ scale_colour_viridis_b()+
+                 scale_fill_manual(values = c("#6A7D8E", "#73EBAE")) +
+                xlab("Months May and June")+
+                ylab("ECR")+ 
+                ggtitle("Cart Comparision")+ guides(fill = FALSE)
+
+
+print(fig_comparision5+myTheme)
+
+
+```
+
+
+```{r}
+
+
+grid.arrange(
+fig_comparision2+myTheme,
+fig_comparision3+myTheme,
+fig_comparision4+myTheme,
+fig_comparision5+myTheme)
+
+
+```
+
+Look at the month device aggregation to find to start the next visualization.
+
+```{r}
+
+head(df_month_device_final)
+
+
+```
+Concatenate the month and device category to graph them.
+
+```{r}
+
+# Use the str_c function from the stringr library.
+
+df_month_device_final$Month_Device1 = str_c( df_month_device_final$Month,",",df_month_device_final$dim_deviceCategory)
+
+
+```
+
+
+
+Visualize the number of transactions per month.
+
+```{r}
+
+
+
+fig_month_device <- ggplot(df_month_device_final, aes(x=Month_Device1, y=transactions, full=Month_Device1)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()+
+                scale_fill_manual(values = c("#6A7D8E", "#73EBAE")) +
+                xlab("Month and Device Type")+
+                ylab("Transactions")+ 
+                ggtitle("Transactions per Month and Device Type")+ guides(fill = FALSE)
+
+fig_month_device
+
+```
+
+
+Find the largest amount of transactions per month and device type.
+
+```{r}
+
+which(df_month_device_final$transactions > 12000)
+
+
+```
+
+Print out the rows that have the maximum transactions.
+
+```{r}
+
+print(df_month_device_final[19,]$Month_Device1)
+print(df_month_device_final[22,]$Month_Device1)
+print(df_month_device_final[25,]$Month_Device1)
+print(df_month_device_final[31,]$Month_Device1)
+```
+
+
+Use a Boolean to calculate a subset with only those rows.
+
+
+```{r}
+
+# Use a Boolean to calculate a subset of the data.
+
+df_month_device_sub <- df_month_device_final[ df_month_device_final$Month_Device1 == "4,desktop" | df_month_device_final$Month_Device1 == "5,desktop" | df_month_device_final$Month_Device1 == "6,desktop" | df_month_device_final$Month_Device1 == "8,desktop", ]
+
+
+```
+
+
+```{r}
+
+# Replace the month and device types with a better name.
+
+df_month_device_sub['Month_Device1'][df_month_device_sub['Month_Device1'] == '4,desktop'] <- "April Desktop"
+
+
+df_month_device_sub['Month_Device1'][df_month_device_sub['Month_Device1'] == '5,desktop'] <- "May Desktop"
+
+
+df_month_device_sub['Month_Device1'][df_month_device_sub['Month_Device1'] == '6,desktop'] <- "June Desktop"
+
+
+df_month_device_sub['Month_Device1'][df_month_device_sub['Month_Device1'] == '8,desktop'] <- "August Desktop"
+
+```
+
+
+Graph those rows.
+
+
+```{r}
+
+# Make a visualization of the four maximum months.
+
+fig_month_device1 <- ggplot(df_month_device_sub, aes(x=Month_Device1, y=transactions, fill=Month_Device1)
+               )+geom_col(show.legend = FALSE, alpha=0.7)+ scale_colour_viridis_b()+ myTheme +
+              scale_fill_manual(values = c("#73EBAE", "#6A7D8E","#73EBAE", "#6A7D8E")) +
+                xlab("Months and Device Type")+
+                ylab("Transactions")+ 
+                ggtitle("Transaction per Month and Device Type")+ guides(fill = FALSE)
+
+fig_month_device1
+
+```
+
+Next drill down into the data by aggregating month, device type, and browser.
+
+```{r}
+
+df2 <-session_counts_clean_final[c(1,2,4:7,10)] # Use the subset of the columns in the vector.
+
+```
+
+Aggregate over month, device type, and browser.
+
+
+```{r}
+
+# Calculate the aggregation by grouping the month, device category, and browser variables.
+
+df_month_device_browser <- df2 %>%
+  group_by(Month, dim_deviceCategory, dim_browser) %>%
+  summarise_all(list(sum), na.rm=TRUE)
+
+
+```
+
+
+
+Check the data frame that was aggregated.
+
+```{r}
+
+head(df_month_device_browser)
+
+
+```
+
+Concatenate the month and device type, Then concatenate that column with browwer.
+
+```{r}
+
+df_month_device_browser$Month_Device = str_c( df_month_device_browser$Month,",",df_month_device_browser$dim_deviceCategory)
+
+
+df_month_device_browser$Month_Device_Browser = str_c( df_month_device_browser$Month_Device,",",df_month_device_browser$dim_browser)
+
+```
+
+
+Graph all of the different aggregations.
+
+
+```{r}
+
+
+
+fig_month_device_browser <- ggplot(df_month_device_browser, aes(x=Month_Device_Browser, y=transactions)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()
+
+fig_month_device_browser
+
+```
+
+Find the maximum aggregations.
+
+```{r}
+
+which(df_month_device_browser$transactions > 6000)
+
+
+```
+
+
+Print the rows with the largest aggregations.
+
+```{r}
+
+print(df_month_device_browser[370,]$Month_Device_Browser)
+print(df_month_device_browser[430,]$Month_Device_Browser)
+print(df_month_device_browser[518,]$Month_Device_Browser)
+print(df_month_device_browser[541,]$Month_Device_Browser)
+```
+
+
+Use a Boolean to calculate only those rows.
+
+```{r}
+
+# Use a Boolean to calculate a subset of the data.
+
+df_month_device_browser_sub <- df_month_device_browser[ df_month_device_browser$Month_Device_Browser == "4,desktop,Chrome" | df_month_device_browser$Month_Device_Browser == "4,tablet,Safari" | df_month_device_browser$Month_Device_Browser == "6,desktop,Safari" | df_month_device_browser$Month_Device_Browser == "6,mobile,Safari", ]
+
+
+```
+
+```{r}
+
+# Replace the month and device types with a better name.
+
+df_month_device_browser_sub['Month_Device_Browser'][df_month_device_browser_sub['Month_Device_Browser'] == '4,desktop,Chrome'] <- "April Desktop Chrome"
+
+
+df_month_device_browser_sub['Month_Device_Browser'][df_month_device_browser_sub['Month_Device_Browser'] == '4,tablet,Safari'] <- "April Tablet Safari"
+
+
+df_month_device_browser_sub['Month_Device_Browser'][df_month_device_browser_sub['Month_Device_Browser'] == '6,desktop,Safari'] <- "June Desktop Safari"
+
+
+df_month_device_browser_sub['Month_Device_Browser'][df_month_device_browser_sub['Month_Device_Browser'] == '6,mobile,Safari'] <- "June Mobile Safari"
+
+```
+
+
+Graph the final maximum aggregation.
+
+```{r}
+
+
+
+fig_month_device_browser <- ggplot(df_month_device_browser_sub, aes(x=Month_Device_Browser, y=transactions, fill = Month_Device_Browser)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()+myTheme+
+                 scale_fill_manual(values = c("#6A7D8E", "#73EBAE","#73EBAE", "#73EBAE")) +
+                xlab("Months May and June, Device, Browser")+
+                ylab("Transactions")+ 
+                ggtitle("Transactions per Month, Device, and Browser ")+ guides(fill = FALSE)
+                
+
+fig_month_device_browser
+
+```
+
+
+Graph the final figure.
+
+```{r}
+grid.arrange(
+fig_month_device1,
+fig_month_device_browser)
+```
+
+From the visualization it can be seen that the April desktops had the most transactions. Furthermore, from the second figure those trasactions come from Chrome and Safari.
+
+# Animations
+
+
+Next animations will be constructed to try to understand the story of the data.
+
+```{r}
+
+# Make a basic graph to produce an animation.
+
+fig1 <- ggplot(session_counts_clean_final, aes(x=sessions, y=transactions, size=QTY, color=QTY)
+               )+geom_point(show.legend = FALSE, alpha=0.7)+ scale_colour_viridis_b()+ myTheme
+
+fig1
+
+```
+
+
+From the following graph the sessions variable has a linear relasionship with the tranasctions. Furthermore, the animation gives a more comprehesive story.
+
+
+```{r warning=FALSE}
+# Animate the previous graph over the time period.
+
+# Finally, use one frame per second to see the animation correctly.
+
+#anim1 <- fig1+transition_time(session_counts_clean_final$dim_date)+labs(title = "Date: {frame_time}, Transistions vs Sessions")
+
+#animate(anim1, nframes= 100, fps = 1)
+
+```
+
+Looking at the animation shows that most of the sessions are less than 10000 and transactions are under 300. There are a moderate amount of sessions less than 20000 but greater than 15000 and the transactions are less than 600 but greater than 400. Finally, there are very few sessions greater than 25000 and the transactions are greater than 600.
+
+
+Next create new variables to take into account the cumulative sum of the data.
+
+```{r}
+
+# Calculate the cumulative sum of the transactions feature.
+
+session_counts_clean_final <- session_counts_clean_final %>%
+              group_by(dim_deviceCategory) %>%
+              arrange(dim_date) %>% 
+              mutate(cumulative_trans = cumsum(transactions))
+
+
+
+```
+
+
+```{r}
+
+# Calculate the cumulative sum of the sessions variable.
+
+session_counts_clean_final <- session_counts_clean_final %>%
+              group_by(dim_deviceCategory) %>%
+              arrange(dim_date) %>% 
+              mutate(cumulative_sessions = cumsum(sessions))
+
+```
+
+
+```{r}
+
+# Calculate the cumulative sum of the quantity.
+
+session_counts_clean_final <- session_counts_clean_final %>%
+              group_by(dim_deviceCategory) %>%
+              arrange(dim_date) %>% 
+              mutate(cumulative_QTY = cumsum(QTY))
+
+```
+
+
+
+```{r}
+
+# Calculate the cumulative sum of the quantity.
+
+session_counts_clean_final <- session_counts_clean_final %>%
+              group_by(dim_deviceCategory) %>%
+              arrange(dim_date) %>% 
+              mutate(cumulative_ECR = cumsum(ECR))
+
+
+```
+
+
+Make sure the correct columns where calculated.
+
+```{r}
+
+View(session_counts_clean_final)
+
+```
+
+
+
+Next the visualizations will be animated to tell the story better.
+
+```{r}
+
+# Plot the initial graph for animation.
+
+
+fig2 <- ggplot(session_counts_clean_final, aes(x=dim_deviceCategory, y=cumulative_trans, fill = cumulative_QTY)
+               )+geom_col(show.legend = TRUE, alpha=0.7)+scale_colour_ordinal()+myTheme
+
+fig2 + ggtitle("Cumulative Trasactions per Device Category")
+
+
+```
+
+Next animate the column graph.
+
+```{r warning=FALSE}
+
+# Animate the previous graph over the time period.
+
+# Finally, use seven frames per second to see the animation correctly.
+
+#anim2 <- fig2+transition_time(session_counts_clean_final$dim_date)+labs(title = "Date: {frame_time}, Cumulative Transactions per Device", x = "Device Category", y = "Cumulative Transactions", legend = "Cumulative Quantity")+ guides(fill=guide_legend(title="Quantity"))
+
+#animate(anim2, nframes= 100, fps = 7)
+
+# Save the animation.
+
+#anim_save("Transaction_Animation_Deliverable.gif", animation = last_animation())
+
+```
+
+
+The previous animation tells the story that most transactions are on desktop type devices. And the quantity over time becomes much greater in the desktop category.
+
+```{r}
+
+# Plot the initial graph.
+
+fig3 <- ggplot(session_counts_clean_final, aes(x=dim_deviceCategory, y=cumulative_trans, fill = cumulative_sessions)
+               )+geom_col(show.legend = TRUE, alpha=0.7)+scale_colour_ordinal()
+                  
+
+fig3
+
+
+```
+
+
+
+```{r}
+
+# Animate the previous graph over the time period.
+
+# Finally, use seven frames per second to see the animation correctly.
+
+anim3 <- fig3+transition_time(session_counts_clean_final$dim_date)+labs(title = "Date: {frame_time}")
+
+animate(anim3, nframes= 100, fps = 7)
+
+```
+
+This animation gives the same story as the previous transaction animation.
+
+Next look at the distribution of device type over transactions.
+
+```{r}
+
+# Graph all the data to understand its distribution.
+
+
+fig4 <- ggplot(session_counts_clean_final, aes(x=dim_browser, y=cumulative_trans, fill = cumulative_sessions)
+               )+geom_col(show.legend = TRUE, alpha=0.7)+ scale_colour_viridis_b()+coord_flip()
+
+fig4
+
+
+```
+
+The previous graph is to difficult to discern which browsers have the greatest cumulative transactions. So a subset is used for the six greatest types.
+
+```{r}
+
+# Use a Boolean to calculate a subset of the data.
+
+df_browser <- session_counts_clean_final[session_counts_clean_final$dim_browser == "SeaMonkey" | session_counts_clean_final$dim_browser == "Safari" | session_counts_clean_final$dim_browser == "Opera" | session_counts_clean_final$dim_browser == "FireFox" |session_counts_clean_final$dim_browser == "Edge" | session_counts_clean_final$dim_browser == "Chrome", ]
+
+
+```
+
+
+
+Next graph the plot to animate.
+
+
+```{r}
+
+# Plot a basic graph to animate and see if any interesting knowledge can obtained.
+
+fig5 <- ggplot(df_browser, aes(x=dim_browser, y=cumulative_trans, fill = cumulative_sessions)
+               )+geom_col(show.legend = TRUE, alpha=0.7)+ scale_colour_viridis_b()+coord_flip()
+
+fig5
+
+
+```
+
+
+```{r}
+
+
+
+#anim5 <- fig5+transition_time(df_browser$dim_date)+labs(title = "Date: {frame_time}")
+
+#animate(anim5, nframes= 100, fps = 7)
+
+```
+
+From the previous animation the browsers give that the top five browsers equally share sessions over time
+
+
+Next compute the total amounts of all the numerical columns.
+
+```{r}
+
+df_subset_totals <- session_counts_clean_final[-c(2,3,7:9,11:14)]
+
+```
+
+Aggregate over the browser.
+
+```{r}
+
+totals <- df_subset_totals %>%
+              group_by(dim_browser) %>%
+              summarise_all(list(sum), na.rm=TRUE)
+
+```
+
+
+```{r}
+
+totals <- session_counts_clean_final %>%
+              group_by(dim_browser) %>%
+              mutate(total_transactions = sum(transactions))
+
+```
+
+
+```{r}
+
+totals <- session_counts_clean_final %>%
+              group_by(dim_browser) %>%
+              mutate(total_sessions = sum(sessions))
+
+```
+
+
+
+```{r}
+
+totals <- session_counts_clean_final %>%
+              group_by() %>%
+              mutate(total_QTY = sum(QTY))
+
+```
+
+
+```{r}
+
+totals <- session_counts_clean_final %>%
+              group_by() %>%
+              mutate(total_ECR = sum(ECR))
+
+```
+
+```{r}
+
+View(totals)
+
+```
+
+```{r}
+
+totals_fig1 <- ggplot(totals, aes(x=dim_browser, y=transactions)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()+coord_flip()
+
+totals_fig1
+
+```
+
+Cacluate the largest transactions.
+
+```{r}
+
+which(totals$transactions > 15000)
+
+
+```
+
+
+```{r}
+
+print(totals[10,]$dim_browser)
+print(totals[21,]$dim_browser)
+print(totals[45,]$dim_browser)
+
+```
+
+```{r}
+
+
+df_browser1 <- totals[totals$dim_browser == "Safari" | totals$dim_browser == "Firefox" | totals$dim_browser == "Chrome", ]
+
+```
+
+```{r}
+
+head(df_browser1)
+
+```
+
+```{r}
+
+totals_fig1 <- ggplot(df_browser1, aes(x=dim_browser, y=transactions, fill = dim_browser)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()+coord_flip()+
+                myTheme+scale_fill_manual(values = c("#6A7D8E", "#6A7D8E","#FAC200")) +
+                xlab("Browser")+
+                ylab("Transactions")+ 
+                ggtitle("Total Transactions per Browser")+ guides(fill = FALSE)
+
+totals_fig1
+
+
+
+```
+
+```{r}
+
+totals_fig2 <- ggplot(df_browser1, aes(x=dim_browser, y=sessions, fill=df_browser1$dim_browser)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()+coord_flip()+coord_flip()+
+   myTheme+scale_fill_manual(values = c("#6A7D8E", "#6A7D8E","#FAC200")) +
+                xlab("Browser")+
+                ylab("Sessions")+ 
+                ggtitle("Total Sessions per Browser")+ guides(fill = FALSE)
+
+totals_fig2
+
+```
+
+
+
+```{r}
+
+totals_fig3 <- ggplot(df_browser1, aes(x=dim_browser, y=QTY, fill=df_browser1$dim_browser)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()+coord_flip()+
+               myTheme+scale_fill_manual(values = c("#6A7D8E", "#6A7D8E","#FAC200")) +
+                xlab("Browser")+
+                ylab("Quantity")+ 
+                ggtitle("Total Quantity per Browser")+ guides(fill = FALSE)
+
+totals_fig3
+
+```
+
+
+
+```{r}
+
+totals_fig4 <- ggplot(df_browser1, aes(x=dim_browser, y=ECR, fill = df_browser1$dim_browser)
+               )+geom_col(show.legend = FALSE, alpha=1)+scale_colour_ordinal()+coord_flip()+
+                 myTheme+scale_fill_manual(values = c("#6A7D8E", "#6A7D8E","#FAC200")) +
+                xlab("Browser")+
+                ylab("ECR")+ 
+                ggtitle("Total ECR per Browser")+ guides(fill = FALSE)
+
+totals_fig4
+
+```
+
+
+
+
+# Conclusion
+
+
+In conclusion the analysis of the transactions yields that the majority of them are made on the desktop in Safari. Leading to the conclusion that people who use Macintosh desktop products are making transactions. These transactions are being made mostly during late fall and early summer: April - May. Moreover, Safari has the most sessions, Quantity, and ECR.
+
+

@@ -1,0 +1,512 @@
+---
+title: "Midterm R Markdown File"
+author: "Patrick Hearin"
+date: "March 26, 2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load the data.
+
+Start by loading the data set, the libraries used, and calculate the total rows.
+
+```{r}
+#  Load the data.
+library(readxl)
+covid = read_excel("owid-covid-data.xlsx")
+# Calculate the total number of rows.
+n = dim(covid)[1];n
+# Load the glmnet library to use elastic regression.
+
+```
+
+```{r}
+
+library(glmnet)
+library(ggplot2)
+
+```
+
+# Clean the data. 
+
+Next the data will be cleaned by reducing the number of features to a small group.  Then the data will be imputed to feed into the machine learning algorithms and double cross validation.
+
+
+```{r}
+# Load the mice and missForest libraries.
+library(mice)
+library(missForest)
+
+```
+
+```{r}
+# Delete the following columns from the data.
+
+covid$new_cases_smoothed = NULL
+covid$new_deaths_smoothed = NULL
+covid$total_cases_per_million = NULL
+covid$new_cases_per_million = NULL
+covid$new_cases_smoothed_per_million = NULL
+covid$total_deaths_per_million = NULL
+covid$new_deaths_per_million = NULL
+covid$new_deaths_smoothed_per_million = NULL
+covid$icu_patients_per_million = NULL
+covid$hosp_patients_per_million = NULL
+covid$weekly_icu_admissions_per_million = NULL
+covid$weekly_hosp_admissions_per_million = NULL
+covid$total_tests_per_thousand = NULL
+covid$new_tests_per_thousand = NULL
+covid$total_tests_per_thousand = NULL
+covid$new_tests_per_thousand = NULL
+covid$new_tests_smoothed = NULL
+covid$new_tests_smoothed_per_thousand = NULL
+covid$new_vaccinations_smoothed = NULL
+covid$total_vaccinations_per_hundred = NULL
+covid$people_vaccinated_per_hundred = NULL
+covid$hospital_beds_per_thousand = NULL
+covid$people_fully_vaccinated_per_hundred = NULL
+covid$new_vaccinations_smoothed_per_million = NULL
+covid$iso_code = NULL
+covid$continent = NULL
+covid$location = NULL
+covid$date = NULL
+covid$tests_per_case = NULL
+covid$female_smokers = NULL
+covid$male_smokers = NULL
+covid$total_tests = NULL
+covid$life_expectancy = NULL
+covid$reproduction_rate = NULL
+covid$cardiovasc_death_rate = NULL
+covid$people_vaccinated = NULL
+covid$handwashing_facilities = NULL
+covid$stringency_index = NULL
+covid$aged_70_older = NULL
+covid$tests_units = NULL
+covid$extreme_poverty = NULL
+covid$people_fully_vaccinated = NULL
+covid$human_development_index = NULL
+covid$weekly_icu_admissions =NULL
+covid$weekly_hosp_admissions = NULL
+covid$hosp_patients = NULL
+covid$icu_patients = NULL
+covid$icu_patients_temp =NULL
+covid$hosp_patients_temp = NULL
+
+```
+
+
+Next the data will be imputed.  The first block puts random numbers in the data set.  The the mice library imputes the data.  This takes care of the missing values. 
+
+```{r}
+
+covid.mis = prodNA(covid,noNA=0.1)
+
+```
+
+```{r}
+
+imputed_Data = mice(covid.mis, m=5, maxit = 2, method = 'cart', seed = 50)
+#summary(imputed_Data)
+
+```
+
+```{r}
+
+completeData = complete(imputed_Data,1)
+
+```
+
+
+
+# Transform the data.
+ 
+Some of the data is skewed. The graphs below shows an example of the response varible being transformed to a distribution that is more normal.  I tried the log function and it made the data very normal, but I it was making errors in the linear regression algorithms.  The section below shows the next attempt to use the square root function to make the data more normally distributed.  I ended up using the raw data without transformations.  
+
+```{r}
+# Plot the histogram of the retail price.
+hist(completeData$diabetes_prevalence, main='Histogram for Diabetes Prevalence', xlab = 'Diabetes prevalence')
+
+```
+
+
+```{r}
+# Plot the histogram of the log of the retail price.
+hist(sqrt(completeData$diabetes_prevalence), main = 'Square root Transformation of Diabetes Prevalence', xlab = 'Diabetes Prevalence')
+
+```
+
+
+```{r}
+# Transform these variables
+
+completeData$new_cases = sqrt(completeData$new_cases)
+completeData$total_cases = sqrt(completeData$total_cases)
+completeData$total_deaths = sqrt(completeData$total_deaths)
+completeData$new_deaths = sqrt(completeData$new_deaths)
+completeData$new_tests = sqrt(completeData$new_tests)
+completeData$positive_rate = sqrt(completeData$positive_rate)
+completeData$total_vaccinations = sqrt(completeData$total_vaccinations)
+completeData$new_vaccinations = sqrt(completeData$new_vaccinations)
+```
+
+
+```{r}
+
+completeData$population = sqrt(completeData$population)
+completeData$population_density = sqrt(completeData$population_density)
+completeData$aged_65_older = sqrt(completeData$aged_65_older)
+completeData$gdp_per_capita = sqrt(completeData$gdp_per_capita)
+completeData$diabetes_prevalence = sqrt(completeData$diabetes_prevalence)
+
+```
+
+# Analyze the data for model selection.
+
+The pairs function to plot all the data.  This plot is used to look for trends that would be useful to help decide which model to use.  From the pairs plot the variables have obvious linear trends with new_cases: new_deaths and total_cases.
+
+This plot is also useful to find trends that would indicate if the predictor variables are correlated. The predictors CityMPG and HwyMPG are correlated.  Also the predictors Wheelbase and Length are correlated.
+
+```{r}
+# Plot all the data.
+pairs(~new_cases + total_cases + total_deaths + new_deaths + new_tests + positive_rate +total_vaccinations + new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence,data = completeData)
+
+
+```
+
+# Plot the linear trends for new cases.
+
+Looking at the graphs below it's obvious that new cases has linear trends.  So, that makes linear regression and its variations appropriate for this model and data set.  The plot below shows the new cases vs new deaths.  This trend makes sense because more deaths mean that more people have Covid, and therefore more new cases.
+
+```{r}
+# Plot new cases vs new deaths.
+plot(new_cases ~ new_deaths, data = completeData, col = 'red', main = 'New Cases vs New Deaths', xlab = 'New Deaths', ylab='New Cases')
+
+```
+
+
+The plot below shows that the new cases rises as the total cases.  Which makes logical sense.
+```{r}
+# Plot new cases vs total_cases.
+plot(new_cases ~ total_cases, data = completeData, col = 'red', main='New Cases vs Total Cases', xlab= 'total_cases', ylab = 'New cases')
+
+```
+
+
+```{r}
+# Plot New Cases vs the GDP per capita. 
+plot(new_cases ~ gdp_per_capita, data = completeData, col = 'red', main='', xlab= 'GDP per Capita', ylab = 'New cases')
+
+```
+
+# Plots for correlation.
+
+Looking at the plots below there is correlation in the predictor variables.  So, I will choose Elastic Net to balance the highly correlated predictors. Multiple linear regression doesn't have this feature.  But, I will choose linear regression, because the models will iterate over different predictors.  So, the two models are appropriate and useful for this data set. The plot below show that the two variables: new deaths and total deaths are highly correlated.  The second plot also shows a similar correlation for the vaccination variables.
+
+```{r}
+# Plot the new deaths vs total deaths.
+plot(new_deaths ~ total_deaths, data = completeData, col = 'blue', main='New Deaths vs Total Deaths',  xlab='Total Deaths', ylab='New Deaths')
+
+```
+
+
+
+```{r}
+# Plot the new vaccinations vs total vaccinations.
+plot(new_vaccinations ~ total_vaccinations, data = completeData, col = 'blue', main='New Vaccinations vs Total Vaccinations', xlab='Total Vaccinations', ylab = 'New Vaccinations')
+
+
+```
+
+
+# Define multiple linear regression models.
+
+Next I will define the models.  The response variable is the new cases of Covid: symbolized by new_cases.  There are thirteen predictor variables. These models will be used to calculate a multiple linear regresion.
+
+
+```{r}
+# All the different models we will test with a linear regression.
+
+LinModel1 = (new_cases ~ diabetes_prevalence)
+LinModel2 = (new_cases ~ gdp_per_capita + diabetes_prevalence)
+LinModel3 = (new_cases ~ aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel4 = (new_cases ~ median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel5 = (new_cases ~ population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel6 = (new_cases ~ population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel7 = (new_cases ~ new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel8 = (new_cases ~ total_vaccinations + new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel9 = (new_cases ~ positive_rate +total_vaccinations + new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel10 = (new_cases ~ new_tests + positive_rate +total_vaccinations + new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel11 = (new_cases ~ new_deaths + new_tests + positive_rate +total_vaccinations + new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel12 = (new_cases ~ total_deaths + new_deaths + new_tests + positive_rate +total_vaccinations + new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+LinModel13 = (new_cases ~ total_cases + total_deaths + new_deaths + new_tests + positive_rate +total_vaccinations + new_vaccinations + population + population_density + median_age + aged_65_older + gdp_per_capita + diabetes_prevalence)
+# List of all the models to iterate through.
+allLinModels = list(LinModel1,LinModel2,LinModel3,LinModel4,LinModel5,LinModel6, LinModel7,LinModel8,LinModel9,LinModel10,LinModel11,LinModel12,LinModel13)	
+# Calculate the total number linear models.
+nLinmodels = length(allLinModels)
+
+
+
+```
+
+# Define penalty parameter lambda.
+Here the penalty parameter will define different elastic net models.  The total is also calculated.
+
+```{r}
+# Different penalty parameters for the Elastic regression.
+lambdalistElastic = c(0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5)
+# Calculate the number of Elastic models.
+nElasticmodels = length(lambdalistElastic)
+
+```
+
+
+
+
+# Calculate the total number of models.
+The total number of models is the linear models plus the elastic net models.
+
+```{r}
+# Calculate the total number of models.
+nmodels = nLinmodels + nElasticmodels
+
+```
+
+
+# Define initial parameters for double cross validation.
+These are the outer cross validation parameters.  The usual split groups and place holder for the CV values are defined.
+
+
+
+```{r}
+
+# Define the fulldata.out as the whole data set to use in double cross validation.
+fulldata.out = completeData
+# Define the number of cross validation splits for the outer loop.
+k.out = 10
+# Define the total number of rows for the outer data set.
+n.out = dim(fulldata.out)[1]
+# Define the cross validation splits.
+groups.out = c(rep(1:k.out,floor(n.out/k.out))); if(floor(n.out/k.out) != (n.out/k.out)) groups.out = c(groups.out, 1:(n.out%%k.out))
+# Set the seed to reproduce results.
+set.seed(8)
+# Randomizes the splits.
+cvgroups.out = sample(groups.out,n.out)  
+# Place holder for all the CV values.
+allpredictedCV.out = rep(NA,n.out) 
+# Place holder for all the best models.
+allbestmodels = rep(NA,k.out)
+
+
+```
+
+# Calculate the best model with double cross validation.
+
+This code comes from the examples given in class and is modified for elastic net and just two models.  It plots out the CV values for each model and calculates the best model.  I wanted to try many more original data mining techniques like neural networks, but they took too long to compile.
+
+
+```{r}
+
+# The first for loop in the double cross validation.
+
+for (j in 1:k.out)  { 
+  # define the different training and validation sets for the outer cross    validations.
+  groupj.out = (cvgroups.out == j)  
+  traindata.out = completeData[!groupj.out,]
+  trainx.out = model.matrix(new_cases ~., data=traindata.out)[,-(2)]
+  trainy.out = traindata.out[,2]
+  validdata.out = completeData[groupj.out,]
+  validx.out = model.matrix(new_cases ~., data=validdata.out)[,-(2)]
+  validy.out = validdata.out[,2]
+  
+  ####################################
+  ### entire model-fitting process ###
+  ####################################
+  
+  fulldata.in = traindata.out
+  
+  ###########################
+  ## Full modeling process ##
+  ###########################
+  
+  
+  n.in = dim(fulldata.in)[1]
+  # Set up the variables for the Elastic regression.  Exclude the two response variables from the predictors.
+  x.in = model.matrix(new_cases ~.,data=fulldata.in)[,-(2)]
+  # Put the predictor variable retail price in the y.
+  y.in = fulldata.in[,2]
+  # Define the number of cross validation splits.
+  k.in = 10
+  # Calculate the list of that wil split the data.
+  groups.in = c(rep(1:k.in,floor(n.in/k.in))); if(floor(n.in/k.in) != (n.in/k.in)) groups.in = c(groups.in, 1:(n.in%%k.in))
+  # Randomize the groups.
+  cvgroups.in = sample(groups.in,n.in)  
+  # Place holder for the CV values.
+  allmodelCV.in = rep(NA,nmodels) 
+  
+  
+  #######################################
+  ## Model 1 Multiple Linear Regression#
+  ######################################
+  
+  # The reference for this model is Lesson 2.
+  
+  # # Space holder for all the CV's.
+   allpredictedCV.in = matrix(rep(NA,n.in*nLinmodels),ncol=nLinmodels)
+  # 
+  # # Cross Validation for the multiple linear regression.
+   for (i in 1:k.in)  {
+     train.in = (cvgroups.in != i)
+     test.in = (cvgroups.in == i)
+     # Iterate over all the linear models.
+     for (m in 1:nLinmodels) {
+       lmfitCV.in = lm(formula = allLinModels[[m]],data=completeData,subset=train.in)
+       allpredictedCV.in[test.in,m] = predict.lm(lmfitCV.in,fulldata.in[test.in,])
+     }
+   }
+  # # Calculate the CV for each linear model.
+   for (m in 1:nLinmodels) { 
+     allmodelCV.in[m] = mean((allpredictedCV.in[,m]-fulldata.in$new_cases)^2)
+   }
+  
+
+  
+  
+  ############################
+  # Second Model Elastic Net #
+  ############################
+  
+  # The reference for this model is lesson 5.
+  
+  # Elastic Net calculation that has internal cross validation.
+  cvElasticglm.in = cv.glmnet(x.in, y.in, lambda=lambdalistElastic, alpha = 0.3, nfolds=k.in, foldid=cvgroups.in)
+  
+  # Put all of the Elastic Net CV's into the total matrix.
+  allmodelCV.in[(1:nElasticmodels)+nLinmodels] = cvElasticglm.in$cvm[order(cvElasticglm.in$lambda)]
+  
+ 
+  
+  # Plot the CV values for each model.
+  plot(allmodelCV.in,pch=20); abline(v=c(nLinmodels+.5,nLinmodels +nElasticmodels+.5))
+  # Calculate the best model.
+  bestmodel.in = (1:nmodels)[order(allmodelCV.in)[1]] 
+  
+  ###################################
+  ##### Best Model Final Fit     ####
+  ###################################
+  
+  # Test for the best model and fit it to the whole data set.
+  # First if is for the linear model.  
+  # The else is for the Elastic regression.
+  if (bestmodel.in <= nLinmodels) {  
+    # Fit the whole data set with the linear regression model.
+    bestfit = lm(formula = allLinModels[[bestmodel.in]],data=fulldata.in) 
+    # Put the coefficients into a varialbe.
+    bestcoef = coef(bestfit)
+  } 
+  else {  
+    # Fit the whole data set with the Elastic Net model.
+    bestlambdaElastic = (lambdalistElastic)[bestmodel.in-nLinmodels-nElasticmodels]
+    bestfit = glmnet(x.in, y.in, alpha = 0,lambda=lambdalistElastic)  
+    # Coefficients for the best model fit.
+    bestcoef = coef(bestfit, s = bestlambdaElastic) 
+  }
+  
+  #############################
+  ## End of modeling process ##
+  #############################
+  
+#############################################################################
+  
+  #############################################
+  ### Calculate the CV for the best model. ###
+  ############################################
+  # Set the jth all best model to the best model
+  allbestmodels[j] = bestmodel.in
+  # Calculate the CV value for the best model.
+  # The first if statement is for the linear models.
+  # The else statement is for the elastic net models.
+  if (bestmodel.in <= nLinmodels) {   
+    # Calculate the CV for the best model.
+    allpredictedCV.out[groupj.out] = predict(bestfit,validdata.out)
+  } 
+  else {  
+    # Calculate the CV for the best model.
+    allpredictedCV.out[groupj.out] =    predict(bestfit,newx=validdata.out,s=bestlambdaElastic)
+  }
+}
+
+
+```
+
+# Print the best model.
+
+```{r}
+
+print("The best model is:")
+
+cat("\n")
+
+bestmodel.in
+
+```
+
+# Calcualte the assessment for the best model.
+
+```{r}
+
+# Use the full data set.
+y.out = fulldata.out$new_cases
+print("The final CV is:")
+cat("\n")
+# Calculate the final CV value.
+CV.out = sum((allpredictedCV.out-y.out)^2)/n.out; CV.out
+cat("\n")
+print("The final R squared is:")
+cat("\n")
+# Calculate the final R squared.
+R2.out = 1-sum((allpredictedCV.out-y.out)^2)/sum((y.out-mean(y.out))^2); R2.out
+
+```
+
+# Print the best coeficients.
+
+```{r}
+print('The best coeficients are:')
+cat('\n')
+bestcoef
+
+```
+
+# Final Plots
+
+This final graph plots the predicted values vs the original data.  This data should follow the identity line for a perfect model.  The model has a nice trend following the identity line y=x.
+
+```{r}
+# Make a data frame to plot the data.
+df = data.frame("allpredicted"= allpredictedCV.out, "original" = y.out, "sport"=completeData$new_cases)
+# Plot the data.
+final_plot = ggplot(df, aes(x = original, y = allpredicted)) +geom_point(aes(color = "red"))
+               
+# title and x,y labels.
+final_plot+labs(title = "Original New Cases vs Predicted New Cases", x = "Original New Cases", y = "Predicted New Cases")
+
+
+```
+
+
+
+
+
+# Final Summary
+
+The final model has an R squared value of 0.9034563.  This value shows it is a good model.  Still around ten percent of the variance needs to be improved.  Different models could be tried in the double cross validation and the categorical variables could be imputed and included.  The variable that influences new cases of Covid the most is the positive rate.  Surprisingly, it influences new cases of Covid negatively.  The other varialbles that influence new cases of Covid positively are: having diabetes and being over sixty five.  Surprisingly population and population density don't influence new cases of covid significantly. GDP per capita also does not influence new cases of Covid significantly.  Finally, vaccination does not influence the new cases of Covid significantly.
+
+As a final note I really wanted to do more creative and interesting things with this project. But, I have been struggling in DS730 a bunch and it has really taken all my time.  I did this project so I could stay within the time limits.  I'm excited to do more research with the knowledge I gained in this course and publishing it on Kaggle!
+
+
+

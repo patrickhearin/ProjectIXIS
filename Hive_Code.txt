@@ -1,0 +1,200 @@
+-- This code comes from a project I did for Big Data and High Performance Computing.
+
+
+
+
+
+-- Problem 1
+
+-- Load the data.
+
+DROP TABLE IF EXISTS batting;
+CREATE EXTERNAL TABLE IF NOT EXISTS batting(id STRING, year INT, team STRING, league STRING, games INT, ab INT, runs INT, hits INT, doubles INT, triples INT, homeruns INT, rbi INT, sb INT, cs INT, walks INT, strikeouts INT, ibb INT, hbp INT, sh INT, sf INT, gidp INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/batting';
+DROP TABLE IF EXISTS master;
+CREATE EXTERNAL TABLE IF NOT EXISTS master(id STRING, byear INT, bmonth INT, bday INT, bcountry STRING, bstate STRING, bcity STRING, dyear INT, dmonth INT, dday INT, dcountry STRING, dstate STRING, dcity STRING, fname STRING, lname STRING, name STRING, weight INT, height INT, bats STRING, throws STRING, debut STRING, finalgame STRING, retro STRING, bbref STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/master';
+
+
+
+-- Execute the query.
+
+SELECT sub2.city AS birth_city FROM (
+SELECT id, SUM(sub1.at_bat) AS total_at_bat, city FROM (
+SELECT b.ab at_bat, b.id AS id, x.bcity AS city
+FROM batting b 
+JOIN (SELECT m.id, m.bcity FROM master m) x
+ON x.id = b.id) AS sub1
+GROUP BY sub1.id, city
+ORDER BY total_at_bat DESC
+LIMIT 1) AS sub2; 
+
+
+
+
+--Problem 2
+
+-- Load the data.
+
+DROP TABLE IF EXISTS batting;
+CREATE EXTERNAL TABLE IF NOT EXISTS batting(id STRING, year INT, team STRING, league STRING, games INT, ab INT, runs INT, hits INT, doubles INT, triples INT, homeruns INT, rbi INT, sb INT, cs INT, walks INT, strikeouts INT, ibb INT, hbp INT, sh INT, sf INT, gidp INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/batting';
+DROP TABLE IF EXISTS master;
+CREATE EXTERNAL TABLE IF NOT EXISTS master(id STRING, byear INT, bmonth INT, bday INT, bcountry STRING, bstate STRING, bcity STRING, dyear INT, dmonth INT, dday INT, dcountry STRING, dstate STRING, dcity STRING, fname STRING, lname STRING, name STRING, weight INT, height INT, bats STRING, throws STRING, debut STRING, finalgame STRING, retro STRING, bbref STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/master';
+
+
+
+-- Execute the query
+
+SELECT sub2.info2 AS birth_month_day FROM (
+SELECT sub1.info AS info2, COUNT(sub1.info) AS total FROM (
+SELECT CONCAT(m.bmonth,"/",m.bday) AS info, m.id
+FROM master m
+WHERE (m.bmonth IS NOT NULL) AND (m.bday IS NOT NULL)) AS sub1
+GROUP BY sub1.info
+ORDER BY total DESC
+LIMIT 3) AS sub2;
+
+
+
+-- Problem 3
+
+-- Load the data.
+
+DROP TABLE IF EXISTS batting;
+CREATE EXTERNAL TABLE IF NOT EXISTS batting(id STRING, year INT, team STRING, league STRING, games INT, ab INT, runs INT, hits INT, doubles INT, triples INT, homeruns INT, rbi INT, sb INT, cs INT, walks INT, strikeouts INT, ibb INT, hbp INT, sh INT, sf INT, gidp INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/batting';
+DROP TABLE IF EXISTS master;
+CREATE EXTERNAL TABLE IF NOT EXISTS master(id STRING, byear INT, bmonth INT, bday INT, bcountry STRING, bstate STRING, bcity STRING, dyear INT, dmonth INT, dday INT, dcountry STRING, dstate STRING, dcity STRING, fname STRING, lname STRING, name STRING, weight INT, height INT, bats STRING, throws STRING, debut STRING, finalgame STRING, retro STRING, bbref STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/master';
+
+-- Execute the query.
+
+SELECT weight
+FROM (SELECT weight, COUNT(id) total,
+			DENSE_RANK() OVER (ORDER BY COUNT(id) DESC) AS ranked
+			FROM master
+		    GROUP BY weight) subquery
+			WHERE subquery.ranked = 2;
+			
+			
+			
+			
+-- Problem 4.
+
+-- Load the data.
+
+DROP TABLE IF EXISTS fielding;
+CREATE EXTERNAL TABLE fielding(id STRING, year INT, team STRING, IgID STRING, pos STRING, games INT, gs INT, innouts INT, po INT, a INT, e INT, dp INT, pb INT, wp INT, sb INT, cs INT, zr INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/fielding';
+
+-- Execute the code.
+
+
+SELECT sub.team AS team
+FROM (SELECT  SUM(e), team, 
+	  DENSE_RANK() OVER (ORDER BY SUM(e) DESC) AS ranked 
+	  FROM fielding
+	  WHERE year = 2001
+	  GROUP BY team) AS sub
+	  WHERE sub.ranked = 1;
+			
+
+
+
+
+-- Problem 5
+
+DROP TABLE IF EXISTS fielding;
+CREATE EXTERNAL TABLE fielding(id STRING, year INT, team STRING, IgID STRING, pos STRING, games INT, gs INT, innouts INT, po INT, a INT, e INT, dp INT, pb INT, wp INT, sb INT, cs INT, zr INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/fielding';
+
+-- Execute the query.
+
+SELECT sub.id AS player_id
+FROM (SELECT  SUM(e), id, 
+	  DENSE_RANK() OVER (ORDER BY SUM(e) DESC) AS ranked 
+	  FROM fielding
+	  GROUP BY id) sub 
+	  WHERE sub.ranked = 1;
+
+
+
+
+-- Problem 6
+
+-- Load the data.
+
+DROP TABLE IF EXISTS fielding;
+CREATE EXTERNAL TABLE fielding(id STRING, year INT, team STRING, IgID STRING, pos STRING, games INT, gs INT, innouts INT, po INT, a INT, e INT, dp INT, pb INT, wp INT, sb INT, cs INT, zr INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/fielding';
+
+DROP TABLE IF EXISTS batting;
+CREATE EXTERNAL TABLE IF NOT EXISTS batting(id STRING, year INT, team STRING, league STRING, games INT, ab INT, runs INT, hits INT, doubles INT, triples INT, homeruns INT, rbi INT, sb INT, cs INT, walks INT, strikeouts INT, ibb INT, hbp INT, sh INT, sf INT, gidp INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/batting';
+
+-- Execute the code.
+
+SELECT id AS player_id
+FROM(
+	SELECT id, (total_hits/total_at_bats - total_error/total_games) AS criterion,
+	DENSE_RANK() OVER (ORDER BY (total_hits/total_at_bats - total_error/total_games) DESC) AS ranked
+	FROM (
+		SELECT b.id AS id, SUM(b.hits) AS total_hits, SUM(b.ab) AS total_at_bats, SUM(f.e) AS total_error, SUM(f.g) AS total_games   
+  		FROM batting b JOIN(
+  			SELECT id, year, e, games AS g
+  			FROM fielding
+ 			WHERE year > 2004 AND year < 2010 AND e > 0 AND games > 0) f
+ 		ON (b.id = f.id)
+		WHERE b.year > 2004 AND b.year < 2010 AND b.hits > 0 AND b.ab > 0 AND f.year > 2004 AND f.year < 2010
+		GROUP BY b.id) sub1
+	WHERE sub1.total_games > 19 AND sub1.total_at_bats > 39) sub2
+WHERE sub2.ranked <= 3;
+ 
+
+
+
+
+-- Problem 7
+
+-- Load the data.
+DROP TABLE IF EXISTS master;
+CREATE EXTERNAL TABLE IF NOT EXISTS master(id STRING, byear INT, bmonth INT, bday INT, bcountry STRING, bstate STRING, bcity STRING, dyear INT, dmonth INT, dday INT, dcountry STRING, dstate STRING, dcity STRING, fname STRING, lname STRING, name STRING, weight INT, height INT, bats STRING, throws STRING, debut STRING, finalgame STRING, retro STRING, bbref STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/master';
+
+DROP TABLE IF EXISTS batting;
+CREATE EXTERNAL TABLE IF NOT EXISTS batting(id STRING, year INT, team STRING, league STRING, games INT, ab INT, runs INT, hits INT, doubles INT, triples INT, homeruns INT, rbi INT, sb INT, cs INT, walks INT, strikeouts INT, ibb INT, hbp INT, sh INT, sf INT, gidp INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/batting';
+
+
+-- Execute the query.
+SELECT CONCAT(bcity,"/",bstate) AS birth_city_state
+FROM (
+SELECT bcity, bstate, SUM(total),
+DENSE_RANK() OVER (ORDER BY SUM(total) DESC) AS ranked
+FROM master m JOIN (SELECT id, (doubles+triples) AS total
+				  FROM batting) b
+  				  ON m.id = b.id		
+GROUP BY bcity, bstate) sub
+WHERE sub.ranked < 6;
+
+
+
+
+
+-- Problem 8
+
+-- Load the data.
+DROP TABLE IF EXISTS master;
+CREATE EXTERNAL TABLE IF NOT EXISTS master(id STRING, byear INT, bmonth INT, bday INT, bcountry STRING, bstate STRING, bcity STRING, dyear INT, dmonth INT, dday INT, dcountry STRING, dstate STRING, dcity STRING, fname STRING, lname STRING, name STRING, weight INT, height INT, bats STRING, throws STRING, debut STRING, finalgame STRING, retro STRING, bbref STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/master';
+
+DROP TABLE IF EXISTS batting;
+CREATE EXTERNAL TABLE IF NOT EXISTS batting(id STRING, year INT, team STRING, league STRING, games INT, ab INT, runs INT, hits INT, doubles INT, triples INT, homeruns INT, rbi INT, sb INT, cs INT, walks INT, strikeouts INT, ibb INT, hbp INT, sh INT, sf INT, gidp INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' LOCATION '/user/maria_dev/hivetest/batting';
+
+
+SELECT CONCAT(bmonth,"/",bstate) AS birth_month_state
+FROM (
+	SELECT bmonth, bstate, subquery1.total_hits/subquery1.total_ab,
+	DENSE_RANK() OVER (ORDER BY subquery1.total_hits/subquery1.total_ab ASC) AS ranked
+	FROM (
+		SELECT bmonth, bstate, SUM(b.hits) AS total_hits, SUM(b.ab) AS total_ab, COUNT(m.id) AS total
+		FROM master m JOIN (
+  		SELECT id, ab, hits
+		FROM batting) b
+  	ON m.id = b.id	
+	WHERE (bmonth IS NOT NULL) AND (bstate IS NOT NULL)
+	GROUP BY bmonth, bstate) subquery1
+	WHERE subquery1.total_ab > 100 AND subquery1.total > 4) subquery2
+	WHERE subquery2.ranked < 10;
+
+
+

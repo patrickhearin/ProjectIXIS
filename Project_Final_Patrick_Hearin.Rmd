@@ -1,0 +1,341 @@
+---
+title: "Part 1 and 2 of Project"
+author: "Patrick Hearin"
+date: "November 18, 2020"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Section 2 - Introduction.
+
+In this project I will investigate data on loans and create an algorithm that will predict if applicants will default of loans. The status variable will be prepared for a binary logistic regression.  Then the variables will be chosen by how they affect status.  Histograms will be used to show how the variable affects the status of the loan.  Some variables will not be used because their effect is small.  The variables will then be transformed to be normal.  Then a binary logistic regression will be executed, and the model will be optimized. 
+
+
+
+# Section 3 - Preparing and Cleaning the Data.
+
+The libraries I will use are readr for importing the csv files, dplyr will be used to manipulate the data, ggplot2 to graph the data, and gridExtra to display it nicely after knitting.
+
+```{r, message=FALSE}
+# Load the libraries
+
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+```
+
+The data is imported and viewed to get an idea about what is in the data.  The total number of rows is $n_{Original}=50,000$.
+
+```{r, message=FALSE}
+# Load the data set and view it.
+
+loans <- read_csv("loans50k.csv")
+View(loans)
+
+```
+
+
+Next, I use dplyr to filter the dataset.  The status variables that are not fully paid or charged off will be replaced with N/A.
+
+```{r}
+# Filtering the data based on status
+
+loans_binary <- 
+  loans %>%
+  mutate(status_binary = case_when(
+    status == "Fully Paid" ~ "Good",
+    status == "Charged Off" ~ "Bad"
+  ))
+
+```
+
+Now I will use the complete.cases function to drop all the status variables that were replaced with N/A during the filter.  All the other variables that have missing values are dropped too.  The clean data set is $64.8%$ of the original one.  So, imputing the values might help the result since around thirty five percent of the data set is lost.  I will try to impute the data and compare it in the final report.
+
+```{r}
+# Use the complete cases to make a boolean and then delete those rows from the data frame.
+
+loans_binary_complete_boolean <- complete.cases(loans_binary)
+
+loans_binary_complete <- loans_binary[loans_binary_complete_boolean, ]
+
+```
+
+Next, I filter the data into two sets, good and bad: such that I can compare them.
+
+```{r}
+# Use filter to spilt the data based on status_binary.
+
+only_good <- 
+  loans_binary_complete %>%
+  filter(status_binary == "Good")
+
+only_bad <- 
+  loans_binary_complete %>%
+  filter(status_binary == "Bad")
+
+```
+
+The categorical variable that I will use is the loan grade. I will do some feature engineering on the lower levels. I add up levels E, F, G and call it "lower_levels".
+
+```{r}
+
+# Use mutate to add the lower levels together.
+
+loans_binary_complete <- 
+  loans_binary_complete %>%
+    mutate(grade_feature_engineering = 
+             case_when(grade == "A" ~ "A",
+                       grade == "B" ~ "B", 
+                       grade == "C" ~ "C",
+                       grade == "D" ~ "D",
+                       grade == "E" ~"lower_grade",
+                       grade == "F" ~ "lower_grade",
+                       grade == "G" ~ "lower_grade"))
+
+```
+
+The graph of the new grade variable is below.
+
+```{r echo=FALSE}
+
+feature_engin <- ggplot(loans_binary_complete, aes(x=factor(grade_feature_engineering)))+geom_bar(stat="count", width=0.7, fill="steelblue")+xlab("Loan Grade")
+
+grid.arrange(feature_engin, nrow=1, 
+top =  "Feature Engineering")
+
+```
+
+
+The variables I choose initially for the logistic regression are amount, rate, payment, income, debtIncRat, inq6mth, revolRatio, totalBal, totalRevLim, accOpen24, bcOpen, totalBcLim.  All these variables showed significant changes in the distribution from good to bad loans. The way I determined is by looking at their histogram plots side by side for example:
+
+```{r, echo=FALSE, message= FALSE}
+# Plot the data for the rate variable for good and bad loans.
+
+loan_plot_1 <- ggplot(data=only_good, aes(x=rate))+
+  geom_histogram(color="black", fill="green")+
+  xlab("Interest Rate for Good Loans")
+
+loan_plot_2 <- ggplot(data=only_bad, aes(x=rate))+
+  geom_histogram(color="black", fill="red")+
+  xlab("Interest for Bad Loans")
+
+grid.arrange(loan_plot_1, loan_plot_2, nrow=2, 
+top =  "Interest Rate Comparision between 
+Good and Bad Loans")
+
+```
+
+The other quantitative variables that I didn’t list did not have a significant change in distribution: so, they will not be used. I didn't try any of the categorical variables but will for the next project step.
+
+
+## Section 4 - "Exploring and Transforming the Data"
+
+I used different transformations on all the skewed variables.  The rate variables was transformed using $(rate)^{\frac{1}{4}}$.  The delinq2yr variable was transformed using $(delinq2yr)^{\frac{1}{3}}$.  The variable revolRatio was not transformed.  The openAcc variable was transformed with the squareroot function.The totalAcc variable was transformed with the square root function.  The totalRevLim variable was transformed with $(totalRevLim)^{\frac{1}{3}}$.  The accOpen24 variable was transformed with the square root function.  The bcRatio variable was transformed with the square root function.  The totalRevLim variable was transformed with $(totalRevBal)^{\frac{1}{3}}$.  These variables are the best transformations I could find: so, I will use the variables enumerated above in the logistic regression. But the following graph illustrates the most successful and simplest.  One of the distributions that was heavily skewed right was the payment variable.  I used the square root transformation, and it became much more normal.  The following graph is the payment variable transformation.
+
+
+
+```{r, message= FALSE}
+
+# Transforming the payment variable and plotting it against the original.
+
+trans_1 <- transform(loans_binary_complete, rate = rate^{1/4})
+trans_2 <- transform(trans_1, payment = sqrt(payment))
+trans_3 <- transform(trans_2, del5inq2yr = (delinq2yr)^{1/3})
+trans_4 <- transform(trans_3, revolRatio = (revolRatio))
+trans_5 <- transform(trans_4, openAcc = sqrt(openAcc))
+trans_6 <- transform(trans_5, totalAcc = sqrt(totalAcc))
+trans_7 <- transform(trans_6, totalRevLim = (totalRevLim)^{1/3})
+trans_8 <- transform(trans_7, accOpen24 = (accOpen24)^{1/2})
+final_transform <- transform(trans_8, totalRevBal = (totalRevBal)^{1/3})
+
+```
+
+
+```{r, echo=FALSE}
+
+# The graphs for selected transformations. 
+
+original_plot <- ggplot(data=loans_binary_complete, aes(x=payment))+
+  geom_histogram(color = "black", fill="yellow")+
+  xlab("Original Payment varible")
+
+transformed_plot <- ggplot(data=final_transform, aes(x=payment))+
+  geom_histogram(color= "black",fill="blue")+
+  xlab("Transformed Payment variable")
+
+grid.arrange(original_plot, transformed_plot, nrow=2, 
+top =  "Comparison Between Original and Transformed Payment Variable")
+
+
+
+```
+
+
+Next I explored all the quantitative variables. Only the final graph for the rate variable will be shown here.  The rate variable behaved quite differently between good and bad loans.  Its interwoven histogram comparing good and bad loans is below.
+
+
+
+```{r, echo= FALSE, message= FALSE}
+
+# Interwoven or interleaved histogram plots.
+
+eda_plot_1 <- ggplot(loans_binary_complete,
+                     aes(x=rate, fill=status_binary, color= 'black')) + 
+  geom_histogram() +
+  xlab("Payment Variable")
+
+grid.arrange(eda_plot_1, nrow=1, 
+top =  "Interwoven Histogram Comparing Good and Bad Loan Payment Variable")
+
+```
+
+
+# Part 2, Section 5 - The Logistic Model.
+
+First two data sets are made from the cleaned data set.  One is the training data set with eighty percent of the cleaned data set. The other data is the testing data set which has twenty percent of the data. 
+
+```{r}
+# set the seed so each time the data is split the same way.
+
+set.seed(10)
+
+# Split the data set into 80% for training and 20% for testing.
+
+n <- dim(loans_binary_complete)[1]
+
+train_ind <- runif(n) <0.8
+
+loans_binary_train <- loans_binary_complete[train_ind, ]
+
+loans_binary_test <- loans_binary_complete[!train_ind, ]
+
+
+
+```
+
+
+For the logistic regression I use the variables below because they produced the best linear regression.  It has all of the transformed variables and the feature engineering as its input.
+
+```{r}
+
+# The logistic regression using categorical and numeric variables.
+
+log_reg_test <- glm(formula = as.factor(status_binary) ~ grade_feature_engineering + rate + payment + debtIncRat   + openAcc + totalAcc  + totalRevLim + accOpen24  + totalRevBal, data = loans_binary_train, family = binomial )
+
+summary(log_reg_test)
+
+
+```
+
+
+Next I use the predict function to find the contingency table or confusion matrix.
+
+```{r}
+# Predict the probabilities and use them to make the confusion matrix.
+
+prediction.test <- predict(log_reg_test, loans_binary_test, test="response")
+
+table_out <- table(loans_binary_test$status_binary, prediction.test >0.5)
+
+table_out
+
+
+```
+
+The accuracy of this model is $Accuracy = \frac{TP+TN}{TN+FN+TP+FP} =88\%$.  The percentage of good loans is $71\%$.  The percentage of bad loans is $17%$.  Overall the model work fairly well.  It's accuracy is decent.
+
+# Section 6 - Optimizing the Threshold for Accuracy.
+
+For this section I load the ROCit library to graph the accuracies versus the threshold.  It has a low AIC compared to other models I made.  The model's parameter's p-value is less that significance.
+```{r}
+
+# Load the ROCit library
+
+library(ROCit)
+
+# Create the plot for accuracy.
+
+class <- log_reg_test$y
+score <- log_reg_test$fitted.values
+
+measure <- measureit(score = score, class = class,
+                     measure = c("ACC", "SENS", "FSCR"))
+plot(measure$ACC~measure$Cutoff, type = "l", xlab="Threshold", ylab="Accuracy", main="Accuracy vs Threshold"
+       )
+
+```
+
+
+Using the previous graph the optimized accuracy is lower.  So, now I test out some different threshold values for maximum true values in the confusion matrix.
+```{r}
+# Testing out different thresholds for optimizing accuracy.
+
+table_out <- table(loans_binary_test$status_binary, prediction.test >0.2)
+
+table_out
+
+
+```
+
+The maximum threshold I found is $0.2$.  For this value the accuracy was $95\%$.  The tradeoff between the correctly predicting good and bad loans is both get greater as the accuracy is optimized.
+
+# Section 7 - Optimizing the Threshold for Profit.
+
+In this section will maximize the profit by computing the total profit.
+```{r}
+
+# Compute the prediction probabilities.
+
+glm_probs = data.frame(probs = predict(log_reg_test, loans_binary_test, test="response"))
+
+# Use mutate to label them good and bad at the threshold.
+
+glm_pred = glm_probs %>%
+  mutate(pred = ifelse(probs>.2, "Good", "Bad"))
+
+# Put the result into the test data.
+
+loans_binary_test_df <- data.frame(loans_binary_test)
+
+loans_binary_test_df$status_pred <- glm_pred$pred
+
+```
+
+
+I will use mutate to put the predicted values into the original data.
+
+```{r}
+
+# Use group by to compute the total profit of the predictions.
+
+loans_binary_test_df %>%
+  group_by(status_pred) %>%
+  summarise(total_paid_pred = sum(totalPaid))
+
+
+```
+Next I use group by to compute the original profit data.
+```{r}
+
+# Use group by to compute the perfect model.
+loans_binary_test_df %>%
+  group_by(status_binary) %>%
+  summarise(total_paid = sum(totalPaid))
+
+
+```
+
+The total profit is changed by $5,932,007$.  Changing the threshold from $0.2$ just decreses the total profit change.  The maximum percentage increase is $6.1%$.  The perfect model percentage would be $6.5\%$.  The perfect model percentage is greater than the percentage that doesn't deny all of the bad loans.  The accuracy and percentages are the same as the one quoted in section 6.  This is because the maximum profit is achieved by maximum accuracy.  It makes sense since having a higher accuracy will be better at predicting and that would increase the profit.
+
+# Section 8 - Results Summary.
+
+The final threshold value for the model was $0.2$.  The model has overall a decent accuracy of $95\%$.  There are many methods that can be used to increase the accuracy.  The hyperparameters could be optimized with grid search.  Alot of the data is lost with my method of cleaning.  I will try to impute the data next time.  The profit gains are about six million dollars.  A significant amount for just a small project.
+
